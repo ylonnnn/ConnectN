@@ -1,10 +1,11 @@
 #pragma once
 
-#include "Player.h"
-#include "types.h"
 #include <array>
 #include <memory>
 #include <vector>
+
+#include "Player.h"
+#include "types.h"
 
 class ConnectN {
 protected:
@@ -21,7 +22,6 @@ protected:
   void initializeGrid();
   void initializeTurn();
 
-  int opposingTurn(int turn);
   void updateTurn();
 
 public:
@@ -29,7 +29,9 @@ public:
   ConnectN(int n, GridSize gridSize,
            std::array<std::unique_ptr<Player>, 2> &players);
 
-  GridSize getGridSize() const;
+  const int &connectionLength() const;
+
+  const GridSize &getGridSize() const;
   Grid &getGrid();
 
   int getTurn();
@@ -37,10 +39,15 @@ public:
 
   bool hasMark(int position[2]);
   bool hasMark(int position[2], CellState state);
+  bool isFull(int col);
+
   bool exceedsGrid(int position[2]);
 
+  void displayScore();
   void mapGrid();
   bool placeMark(int turn, int col);
+
+  std::vector<int> getUnfilledColumns();
 
   int requiredMoves(int turn, Orientation orientation);
 
@@ -48,7 +55,7 @@ public:
   void check(int turn, int position[2]);
 
   Orientation optimalOrientation(int turn, int position[2]);
-  // Orientation optimalOrientation(int turn);
+  Orientation optimalOrientation(int turn);
 
   std::vector<Orientation> horizontalOrientations(int turn, int position[2]);
   std::vector<Orientation> verticalOrientations(int turn, int position[2]);
@@ -57,4 +64,6 @@ public:
   void start();
   void process();
   void end();
+
+  int opposingTurn(int turn);
 };

@@ -45,20 +45,17 @@ void ConnectN::initializeGrid() {
 
     for (int j = 0; j < gridSize[1]; j++) {
       grid[i][j] = {CellState::Empty, {i, j}};
-
-      std::cout << i << " : " << j << "\t";
     }
-
-    std::cout << "\n";
   }
 }
 
 void ConnectN::initializeTurn() { turn = std::round(random() + 1); }
 
-int ConnectN::opposingTurn(int turn) { return turn == 1 ? 2 : 1; }
 void ConnectN::updateTurn() { turn = opposingTurn(turn); }
 
-GridSize ConnectN::getGridSize() const { return gridSize; }
+const int &ConnectN::connectionLength() const { return n; }
+
+const GridSize &ConnectN::getGridSize() const { return gridSize; }
 Grid &ConnectN::getGrid() { return grid; }
 
 int ConnectN::getTurn() { return turn; }
@@ -77,6 +74,12 @@ bool ConnectN::hasMark(int position[2], CellState state) {
   return grid[position[0]][position[1]].state == state;
 }
 
+bool ConnectN::isFull(int col) {
+  int pos[2]{0, col};
+
+  return !hasMark(pos, CellState::Empty);
+}
+
 bool ConnectN::exceedsGrid(int position[2]) {
   int row = position[0], col = position[1];
 
@@ -84,8 +87,17 @@ bool ConnectN::exceedsGrid(int position[2]) {
          (col < 0 || col > (gridSize[1] - 1));
 }
 
+void ConnectN::displayScore() {
+  std::unique_ptr<Player> &p1 = players[0], &p2 = players[1];
+
+  std::cout << "[" << p1->getName() << "]   " << p1->getScore() << " | ["
+            << p2->getName() << "]   " << p2->getScore() << "\n";
+}
+
 void ConnectN::mapGrid() {
   int row = gridSize[0], col = gridSize[1];
+
+  displayScore();
 
   const std::string singleLine = "|---------------";
   std::string line = "", columnLine = "|";
@@ -106,7 +118,7 @@ void ConnectN::mapGrid() {
 
       std::cout << (cell.state == CellState::Empty
                         ? "   "
-                        : (cell.state == CellState::Player1 ? "[1]" : "[2]"))
+                        : (cell.state == CellState::Player1 ? "(O)" : "[X]"))
                 << "\t";
 
       if (j < (col - 1))
@@ -123,7 +135,9 @@ bool ConnectN::placeMark(int turn, int col) {
   // Normalized for vector indexing
   --col;
 
-  int position[2]{-1};
+  // If the column is full, immediately return false
+  if (isFull(col))
+    return false;
 
   for (int i = grid.size() - 1; i > -1; i--) {
     Cell &cell = grid[i][col];
@@ -131,24 +145,27 @@ bool ConnectN::placeMark(int turn, int col) {
     if (cell.state != CellState::Empty)
       continue;
 
-    position[0] = i, position[1] = col;
     cell.state = (CellState)(turn);
 
     break;
   }
 
-  // If the position is unchanged, every cell within the row is full
-  if (position[0] == -1) {
-    std::cout << "You can no longer place marks on Column #" << col + 1
-              << "!\n";
+  return true;
+}
 
-    return false;
+std::vector<int> ConnectN::getUnfilledColumns() {
+  int maxCol = gridSize[1];
+  std::vector<int> columns;
+
+  columns.reserve(maxCol);
+
+  for (int i = 0; i < maxCol; i++) {
+    int topPos[2]{0, i};
+    if (hasMark(topPos, CellState::Empty))
+      columns.push_back(i + 1);
   }
 
-  // Check if the mark placement led the current turn to win
-  // check(turn, position);
-
-  return true;
+  return columns;
 }
 
 int ConnectN::requiredMoves(int turn, Orientation orientation) {
@@ -157,6 +174,9 @@ int ConnectN::requiredMoves(int turn, Orientation orientation) {
             oppState = (CellState)(opposingTurn(turn));
 
   std::unordered_map<int, bool> countedCells;
+
+  if (orientation.size() == 0)
+    return n;
 
   for (const Cell &cell : orientation) {
     int row = cell.position[0], col = cell.position[1],
@@ -173,9 +193,10 @@ int ConnectN::requiredMoves(int turn, Orientation orientation) {
 
     int below[2]{row + 1, col};
 
-    if (!exceedsGrid(below) && !hasMark(below)) {
-      for (int i = below[0]; i < (gridSize[0] - 1); i++) {
-        if (countedCells.find(rep) != countedCells.end())
+    if (!exceedsGrid(below)) {
+      for (int i = below[0]; i < (gridSize[0]); i++) {
+        if (countedCells.find((i * gridSize[0]) + (col + 1)) !=
+            countedCells.end())
           break;
 
         int pos[2]{i, col};
@@ -214,6 +235,29 @@ void ConnectN::check(int turn, int position[2]) {
   if (required == 0) {
     winner = std::move(players[turn - 1]).get();
   }
+}
+
+Orientation ConnectN::optimalOrientation(int turn) {
+  Orientation orientation;
+  int reqMoves = INT_MAX;
+
+  for (int i = 0; i < gridSize[0]; i++) {
+    for (int j = 0; j < gridSize[1]; j++) {
+      int pos[2]{i, j};
+      if (!hasMark(pos, (CellState)(turn)))
+        continue;
+
+      Orientation _orientation = optimalOrientation(turn, pos);
+      int required = requiredMoves(turn, _orientation);
+
+      if (required < reqMoves) {
+        orientation = _orientation;
+        reqMoves = required;
+      }
+    }
+  }
+
+  return orientation;
 }
 
 Orientation ConnectN::optimalOrientation(int turn, int position[2]) {
@@ -272,8 +316,8 @@ std::vector<Orientation> ConnectN::horizontalOrientations(int turn,
   int row = position[0], col = position[1], directions[2] = {1, -1},
       directionC = sizeof(directions) / sizeof(directions[0]);
 
-  std::vector<Orientation> orientations(directionC);
-  int validOrientations = 0;
+  std::vector<Orientation> orientations;
+  orientations.reserve(directionC);
 
   CellState oppState = turn == 1 ? CellState::Player2 : CellState::Player1;
 
@@ -285,8 +329,8 @@ std::vector<Orientation> ConnectN::horizontalOrientations(int turn,
     if (0 > colN || colN >= gridSize[1])
       continue;
 
-    Orientation orientation(n);
-    int validCells = 0;
+    Orientation orientation;
+    orientation.reserve(n);
 
     for (int i = col; i != (colN + direction); i += direction) {
       const Cell &cell = grid[row][i];
@@ -294,21 +338,18 @@ std::vector<Orientation> ConnectN::horizontalOrientations(int turn,
       if (cell.state == oppState)
         break;
 
-      orientation[validCells++] = cell;
+      // orientation[validCells++] = cell;
+      orientation.push_back(cell);
     }
 
     // If the valid cells within the orientation from the grid is less than
     // the required amount for a connection, the orientation is blocked by the
     // opponent of the current turn
-    if (validCells < (n - 1))
+    if ((int)(orientation.size()) < n)
       continue;
 
-    orientations[validOrientations++] = std::move(orientation);
+    orientations.push_back(std::move(orientation));
   }
-
-  // Resize the orientations to the actual amount of valid orientations to free
-  // some memory
-  orientations.resize(validOrientations);
 
   return orientations;
 }
@@ -318,8 +359,8 @@ std::vector<Orientation> ConnectN::verticalOrientations(int turn,
   int row = position[0], col = position[1], directions[2] = {1, -1},
       directionC = sizeof(directions) / sizeof(directions[0]);
 
-  std::vector<Orientation> orientations(directionC);
-  int validOrientations = 0;
+  std::vector<Orientation> orientations;
+  orientations.reserve(directionC);
 
   CellState oppState = turn == 1 ? CellState::Player2 : CellState::Player1;
 
@@ -331,8 +372,8 @@ std::vector<Orientation> ConnectN::verticalOrientations(int turn,
     if (0 > rowN || rowN >= gridSize[0])
       continue;
 
-    Orientation orientation(n);
-    int validCells = 0;
+    Orientation orientation;
+    orientation.reserve(n);
 
     for (int i = row; i != (rowN + direction); i += direction) {
       const Cell &cell = grid[i][col];
@@ -340,21 +381,17 @@ std::vector<Orientation> ConnectN::verticalOrientations(int turn,
       if (cell.state == oppState)
         break;
 
-      orientation[validCells++] = cell;
+      orientation.push_back(cell);
     }
 
     // If the valid cells within the orientation from the grid is less than
     // the required amount for a connection, the orientation is blocked by the
     // opponent of the current turn
-    if (validCells < n)
+    if ((int)(orientation.size()) < n)
       continue;
 
-    orientations[validOrientations++] = std::move(orientation);
+    orientations.push_back(std::move(orientation));
   }
-
-  // Resize the orientations to the actual amount of valid orientations to free
-  // some memory
-  orientations.resize(validOrientations);
 
   return orientations;
 }
@@ -364,8 +401,8 @@ std::vector<Orientation> ConnectN::diagonalOrientations(int turn,
   int row = position[0], col = position[1], directions[2] = {1, -1},
       directionC = sizeof(directions) / sizeof(directions[0]);
 
-  std::vector<Orientation> orientations(directionC * 2);
-  int validOrientations = 0;
+  std::vector<Orientation> orientations;
+  orientations.reserve(directionC * 2);
 
   CellState oppState = turn == 1 ? CellState::Player2 : CellState::Player1;
 
@@ -380,8 +417,8 @@ std::vector<Orientation> ConnectN::diagonalOrientations(int turn,
           (0 > colN || colN >= gridSize[1]))
         continue;
 
-      Orientation orientation(n);
-      int validCells = 0;
+      Orientation orientation;
+      orientation.reserve(n);
 
       for (int i = row, j = col;
            i != (rowN + direction) || j != (colN + direction1);
@@ -391,32 +428,29 @@ std::vector<Orientation> ConnectN::diagonalOrientations(int turn,
         if (cell.state == oppState)
           break;
 
-        orientation[validCells++] = cell;
+        orientation.push_back(cell);
       }
 
       // If the valid cells within the orientation from the grid is less than
       // the required amount for a connection, the orientation is blocked by the
       // opponent of the current turn
-      if (validCells < (n - 1))
+      if ((int)(orientation.size()) < n)
         continue;
 
-      orientations[validOrientations++] = std::move(orientation);
+      orientations.push_back(std::move(orientation));
     }
   }
-
-  // Resize the orientations to the actual amount of valid orientations to free
-  // some memory
-  orientations.resize(validOrientations);
 
   return orientations;
 }
 
 void ConnectN::start() {
+  // Initialize/Clear the grid and initialize  the turn
+  initializeGrid();
+  initializeTurn();
+
   // Map the grid for the initial display
   mapGrid();
-
-  // Initialize the turn
-  initializeTurn();
 
   // Allow the player to play their turn
   players[turn - 1]->play(*this);
@@ -446,5 +480,10 @@ void ConnectN::end() {
     std::cout << "WINNER: Player " << winner->getName() << "\n";
   }
 
+  winner->setScore(winner->getScore() + 1);
+  winner = nullptr;
+
   std::cout << "\n";
 }
+
+int ConnectN::opposingTurn(int turn) { return turn == 1 ? 2 : 1; }

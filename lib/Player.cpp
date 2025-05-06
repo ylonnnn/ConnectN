@@ -4,13 +4,15 @@
 #include "../include/ConnectN.h"
 #include "../include/Player.h"
 
-Player::Player(std::string name) : name(name) {}
+Player::Player(std::string name) : name(name), score(0) {}
 
 std::string Player::getName() { return name; }
+int Player::getScore() { return score; }
+void Player::setScore(int newScore) { score = newScore; }
+
 int Player::getTurn(ConnectN &game) { return game.getTurn(this); }
 
 void Player::play(ConnectN &game) {
-  // TODO: PLayer play()
   Grid &grid = game.getGrid();
   int col, maxCol = game.getGridSize()[1];
 
@@ -23,7 +25,12 @@ void Player::play(ConnectN &game) {
     return play(game);
   }
 
-  game.placeMark(getTurn(game), col);
+  if (!game.placeMark(getTurn(game), col)) {
+    std::cout << "Column #" << col << " is already full!\n";
+
+    return play(game);
+  }
+
   game.mapGrid();
   game.process();
 }

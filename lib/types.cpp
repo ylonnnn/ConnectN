@@ -5,7 +5,8 @@
 
 std::ostream &operator<<(std::ostream &os, const Cell &cell) {
   return os << (cell.state == CellState::Empty     ? "[_]"
-                : cell.state == CellState::Player1 ? "[1]"
-                                                   : "[2]")
-            << " <" << cell.position[0] << ", " << cell.position[1] << ">";
+                : cell.state == CellState::Player1 ? "(O)"
+                                                   : "[X]")
+            << " <" << (cell.position[1] + 1) << ", " << (cell.position[0] + 1)
+            << ">";
 }
